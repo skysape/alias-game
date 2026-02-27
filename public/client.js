@@ -35,7 +35,11 @@ $('settings-btn').addEventListener('click', () => openSettingsModal());
 $('g-settings-btn').addEventListener('click', () => openRulesModal());
 
 // ===== CREATE TEAM =====
-$('create-team-btn').addEventListener('click', () => openModal('modal-create-team'));
+$('create-team-btn').addEventListener('click', () => {
+  $('team-name-input').value = '';
+  clearError('create-team-error');
+  openModal('modal-create-team');
+});
 $('modal-create-cancel').addEventListener('click', () => closeModal());
 $('modal-create-confirm').addEventListener('click', () => {
   const name = $('team-name-input').value.trim();
@@ -65,14 +69,6 @@ $('modal-profile-save').addEventListener('click', () => {
 });
 $('new-nick-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('modal-profile-save').click(); });
 
-socket.on('nick_changed', ({ nick }) => {
-  myNick = nick;
-  $('topbar-nick').textContent = nick;
-  $('profile-nick-display').textContent = nick;
-  showError('nick-change-error', '✓ Готово!');
-  setTimeout(() => closeModal(), 900);
-});
-
 // ===== SETTINGS =====
 $('modal-settings-close').addEventListener('click', () => closeModal());
 $('modal-settings-save').addEventListener('click', () => {
@@ -94,13 +90,11 @@ document.querySelectorAll('.diff-btn[data-diff]').forEach(btn => {
 });
 $('theme-dark').addEventListener('click', () => {
   document.body.classList.remove('light');
-  $('theme-dark').classList.add('active');
-  $('theme-light').classList.remove('active');
+  $('theme-dark').classList.add('active'); $('theme-light').classList.remove('active');
 });
 $('theme-light').addEventListener('click', () => {
   document.body.classList.add('light');
-  $('theme-light').classList.add('active');
-  $('theme-dark').classList.remove('active');
+  $('theme-light').classList.add('active'); $('theme-dark').classList.remove('active');
 });
 
 // ===== COLOR PALETTE =====
@@ -123,13 +117,33 @@ $('modal-rules-close').addEventListener('click', () => closeModal());
 $('start-game-btn').addEventListener('click', () => { clearError('start-error'); socket.emit('start_game'); });
 $('ready-btn').addEventListener('click', () => {
   socket.emit('player_ready');
-  $('ready-btn').disabled = true;
-  $('ready-btn').textContent = '✓ Готов!';
+  $('ready-btn').disabled = true; $('ready-btn').textContent = '✓ Готов!';
 });
 $('explainer-start-btn').addEventListener('click', () => socket.emit('explainer_start'));
 $('next-word-btn').addEventListener('click', () => socket.emit('next_word'));
 $('submit-review-btn').addEventListener('click', () => socket.emit('submit_review', { results: reviewResults }));
 $('restart-btn').addEventListener('click', () => socket.emit('restart_game'));
+
+// ===== SERVER SUCCESS EVENTS — закрываем модалки только здесь =====
+
+// Ник успешно изменён
+socket.on('nick_changed', ({ nick }) => {
+  myNick = nick;
+  $('topbar-nick').textContent = nick;
+  $('profile-nick-display').textContent = nick;
+  showError('nick-change-error', '✓ Сохранено!');
+  setTimeout(() => closeModal(), 800);
+});
+
+// Команда успешно создана
+socket.on('team_created', () => {
+  closeModal();
+});
+
+// Команда успешно переименована
+socket.on('team_renamed', () => {
+  closeModal();
+});
 
 // ===== SOCKET EVENTS =====
 socket.on('registered', ({ id, isHost: host }) => {
@@ -167,29 +181,18 @@ socket.on('current_word', (word) => {
   requestAnimationFrame(() => { el.style.animation = ''; el.textContent = word; });
 });
 
-// ФИкс: кик больше не выбрасывает с сайта — только убирает из команды
-socket.on('kick_from_team', () => {
-  // Показываем уведомление, остаёмся в лобби
-  showKickNotice();
-});
-
-// Полный кик с сайта (на случай если понадобится)
+socket.on('kick_from_team', () => showKickNotice());
 socket.on('kicked', () => location.reload());
 
 socket.on('state', (s) => {
-  // КЛЮЧЕВОЙ ФИкс бага с гонкой ников:
-  // Обновляем state только если мы УЖЕ зарегистрированы (myId не null).
-  // Если myId === null — мы ещё на экране регистрации, стейт нас не касается.
+  // Игнорируем пока не зарегистрированы — фикс гонки ников
   if (!myId) return;
-
-  // Дополнительная проверка: если нас нет в state.players — значит нас кикнули
-  // или произошло что-то странное. Не обрабатываем такой стейт.
   if (!s.players[myId]) return;
 
   state = s;
   isHost = state.players[myId].isHost;
 
-  // Синхронизируем ник из сервера
+  // Синхронизируем ник
   const serverNick = state.players[myId].nick;
   if (serverNick && serverNick !== myNick) {
     myNick = serverNick;
@@ -202,30 +205,16 @@ socket.on('state', (s) => {
   if (state.gameState === 'lobby') { showScreen('lobby'); renderLobby(); }
   else if (state.gameState === 'playing') { showScreen('game'); renderGame(); }
   else if (state.gameState === 'game_over') { showScreen('winner'); renderWinner(); }
-
-  if (state.gameState === 'lobby') {
-    const myTeam = getMyTeam();
-    const cm = $('modal-create-team');
-    if (cm && !cm.classList.contains('hidden') && myTeam) closeModal();
-    const rm = $('modal-rename');
-    if (rm && !rm.classList.contains('hidden')) closeModal();
-  }
+  // Модалки НЕ закрываем из state — только из конкретных событий выше
 });
 
 // ===== KICK NOTICE =====
 function showKickNotice() {
-  // Показываем баннер "Вас убрали из команды"
   let banner = $('kick-notice');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'kick-notice';
-    banner.style.cssText = `
-      position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
-      background: #e53e3e; color: white; padding: 12px 24px; border-radius: 10px;
-      font-size: 0.95rem; font-weight: 600; z-index: 9999;
-      box-shadow: 0 4px 20px rgba(229,62,62,0.4);
-      animation: fadeIn 0.3s ease;
-    `;
+    banner.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#e53e3e;color:white;padding:12px 24px;border-radius:10px;font-size:0.95rem;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(229,62,62,0.4)';
     document.body.appendChild(banner);
   }
   banner.textContent = '⚠ Вас убрали из команды';
@@ -240,11 +229,9 @@ function renderLobby() {
   if (me) { myNick = me.nick; $('topbar-nick').textContent = myNick; }
 
   if (isHost) {
-    $('host-badge').classList.remove('hidden');
-    $('host-controls').classList.remove('hidden');
+    $('host-badge').classList.remove('hidden'); $('host-controls').classList.remove('hidden');
   } else {
-    $('host-badge').classList.add('hidden');
-    $('host-controls').classList.add('hidden');
+    $('host-badge').classList.add('hidden'); $('host-controls').classList.add('hidden');
   }
 
   const teamsEl = $('teams-list');
@@ -306,9 +293,7 @@ function renderTeamCard(team, container) {
 
   if (isCreator) {
     const renBtn = document.createElement('button');
-    renBtn.className = 'btn-ghost btn-sm';
-    renBtn.textContent = '✏';
-    renBtn.title = 'Переименовать';
+    renBtn.className = 'btn-ghost btn-sm'; renBtn.textContent = '✏'; renBtn.title = 'Переименовать';
     renBtn.addEventListener('click', () => {
       renameTargetTeamId = team.id;
       $('rename-input').value = team.name;
@@ -320,14 +305,12 @@ function renderTeamCard(team, container) {
 
   if (isMine) {
     const leaveBtn = document.createElement('button');
-    leaveBtn.className = 'btn-danger btn-sm';
-    leaveBtn.textContent = 'Выйти';
+    leaveBtn.className = 'btn-danger btn-sm'; leaveBtn.textContent = 'Выйти';
     leaveBtn.addEventListener('click', () => socket.emit('leave_team'));
     btns.appendChild(leaveBtn);
   } else if (canJoin) {
     const joinBtn = document.createElement('button');
-    joinBtn.className = 'btn-primary btn-sm';
-    joinBtn.textContent = 'Вступить';
+    joinBtn.className = 'btn-primary btn-sm'; joinBtn.textContent = 'Вступить';
     joinBtn.addEventListener('click', () => socket.emit('join_team', { teamId: team.id }));
     btns.appendChild(joinBtn);
   }
@@ -341,16 +324,13 @@ function renderTeamCard(team, container) {
       kickBtn.addEventListener('click', () => socket.emit('kick_player', { targetId: pid }));
       btns.appendChild(kickBtn);
       const thBtn = document.createElement('button');
-      thBtn.className = 'btn-ghost btn-sm';
-      thBtn.textContent = '→ Хост';
+      thBtn.className = 'btn-ghost btn-sm'; thBtn.textContent = '→ Хост';
       thBtn.addEventListener('click', () => socket.emit('transfer_host', { targetId: pid }));
       btns.appendChild(thBtn);
     });
   }
 
-  header.appendChild(nameEl);
-  header.appendChild(btns);
-  card.appendChild(header);
+  header.appendChild(nameEl); header.appendChild(btns); card.appendChild(header);
 
   const members = document.createElement('div');
   members.className = 'team-members-list';
@@ -364,8 +344,7 @@ function renderTeamCard(team, container) {
   });
   for (let i = team.players.length; i < 2; i++) {
     const slot = document.createElement('div');
-    slot.className = 'team-slot-empty';
-    slot.textContent = '— свободное место';
+    slot.className = 'team-slot-empty'; slot.textContent = '— свободное место';
     members.appendChild(slot);
   }
   card.appendChild(members);
@@ -384,21 +363,15 @@ function renderGame() {
     if (!team) return;
     const card = document.createElement('div');
     card.className = 'game-team-card' + (idx === gd.currentTeamIndex ? ' active-turn' : '');
-    const nameEl = document.createElement('div');
-    nameEl.className = 'game-team-name';
-    nameEl.textContent = team.name;
-    const scoreEl = document.createElement('div');
-    scoreEl.className = 'game-team-score';
-    scoreEl.textContent = gd.scores[teamId] || 0;
-    const playersEl = document.createElement('div');
-    playersEl.className = 'game-team-players';
+    const nameEl = document.createElement('div'); nameEl.className = 'game-team-name'; nameEl.textContent = team.name;
+    const scoreEl = document.createElement('div'); scoreEl.className = 'game-team-score'; scoreEl.textContent = gd.scores[teamId] || 0;
+    const playersEl = document.createElement('div'); playersEl.className = 'game-team-players';
     team.players.forEach(pid => {
-      const p = state.players[pid];
-      if (!p) return;
-      const isExplainer = pid === gd.explainerSocketId;
+      const p = state.players[pid]; if (!p) return;
+      const isExp = pid === gd.explainerSocketId;
       const nick = document.createElement('div');
-      nick.className = 'g-player-nick' + (pid === myId ? ' is-me' : '') + (isExplainer ? ' is-explainer' : '');
-      nick.textContent = p.nick + (isExplainer ? ' 🎤' : '');
+      nick.className = 'g-player-nick' + (pid === myId ? ' is-me' : '') + (isExp ? ' is-explainer' : '');
+      nick.textContent = p.nick + (isExp ? ' 🎤' : '');
       playersEl.appendChild(nick);
     });
     card.appendChild(nameEl); card.appendChild(scoreEl); card.appendChild(playersEl);
@@ -408,11 +381,9 @@ function renderGame() {
   const obsEl = $('game-observers-list');
   obsEl.innerHTML = '';
   state.observers.forEach(pid => {
-    const p = state.players[pid];
-    if (!p) return;
+    const p = state.players[pid]; if (!p) return;
     const d = document.createElement('div');
-    d.className = 'observer-item' + (pid === myId ? ' is-me' : '');
-    d.textContent = p.nick;
+    d.className = 'observer-item' + (pid === myId ? ' is-me' : ''); d.textContent = p.nick;
     obsEl.appendChild(d);
   });
 
@@ -429,21 +400,16 @@ function renderGame() {
 
 function renderPhaseReady(gd) {
   $('phase-ready').classList.remove('hidden');
-  clearInterval(timerInterval);
-  $('g-timer').textContent = '—';
-  $('g-timer').classList.remove('urgent');
+  clearInterval(timerInterval); $('g-timer').textContent = '—'; $('g-timer').classList.remove('urgent');
   const teamId = gd.teamOrder[gd.currentTeamIndex];
   const team = state.teams[teamId];
   $('ready-title').textContent = `Ход команды: ${team.name}`;
   $('ready-sub').textContent = 'Оба игрока должны нажать "Готов"';
-  const statusEl = $('ready-status');
-  statusEl.innerHTML = '';
+  const statusEl = $('ready-status'); statusEl.innerHTML = '';
   team.players.forEach(pid => {
-    const p = state.players[pid];
-    if (!p) return;
-    const isReady = gd.readyPlayers.includes(pid);
+    const p = state.players[pid]; if (!p) return;
     const row = document.createElement('div');
-    row.className = 'ready-player-row' + (isReady ? ' is-ready' : '');
+    row.className = 'ready-player-row' + (gd.readyPlayers.includes(pid) ? ' is-ready' : '');
     row.innerHTML = `<span>${p.nick}${pid === myId ? ' (вы)' : ''}</span><div class="ready-dot"></div>`;
     statusEl.appendChild(row);
   });
@@ -457,39 +423,27 @@ function renderPhaseReady(gd) {
 
 function renderPhaseExplainerStart(gd) {
   $('phase-explainer-start').classList.remove('hidden');
-  clearInterval(timerInterval);
-  $('g-timer').textContent = '—';
-  $('g-timer').classList.remove('urgent');
-  const teamId = gd.teamOrder[gd.currentTeamIndex];
-  const team = state.teams[teamId];
+  clearInterval(timerInterval); $('g-timer').textContent = '—'; $('g-timer').classList.remove('urgent');
+  const team = state.teams[gd.teamOrder[gd.currentTeamIndex]];
   const explainer = state.players[gd.explainerSocketId];
-  const amExplainer = myId === gd.explainerSocketId;
+  const amExp = myId === gd.explainerSocketId;
   $('explainer-start-title').textContent = `Команда ${team?.name} готова!`;
-  $('explainer-start-sub').textContent = amExplainer
+  $('explainer-start-sub').textContent = amExp
     ? 'Вы объясняете — нажмите "Начать раунд" когда готовы!'
     : `Ждём пока ${explainer?.nick || '?'} начнёт раунд...`;
-  if (amExplainer) $('explainer-start-btn').classList.remove('hidden');
+  if (amExp) $('explainer-start-btn').classList.remove('hidden');
   else $('explainer-start-btn').classList.add('hidden');
 }
 
 function renderPhasePlaying(gd) {
   $('phase-playing').classList.remove('hidden');
-  const amExplainer = myId === gd.explainerSocketId;
-  const wordDisplay = $('current-word-display');
-  if (amExplainer) {
-    $('next-word-btn').classList.remove('hidden');
-    wordDisplay.classList.remove('blur-word');
-  } else {
-    wordDisplay.classList.add('blur-word');
-    wordDisplay.textContent = '???';
-    $('next-word-btn').classList.add('hidden');
-  }
-  const prevList = $('prev-words-list');
-  prevList.innerHTML = '';
+  const amExp = myId === gd.explainerSocketId;
+  const wd = $('current-word-display');
+  if (amExp) { $('next-word-btn').classList.remove('hidden'); wd.classList.remove('blur-word'); }
+  else { wd.classList.add('blur-word'); wd.textContent = '???'; $('next-word-btn').classList.add('hidden'); }
+  const prevList = $('prev-words-list'); prevList.innerHTML = '';
   (gd.previousWords || []).forEach(word => {
-    const item = document.createElement('div');
-    item.className = 'prev-word-item';
-    item.textContent = word;
+    const item = document.createElement('div'); item.className = 'prev-word-item'; item.textContent = word;
     prevList.appendChild(item);
   });
   startTimer(gd.roundEndTime);
@@ -497,15 +451,11 @@ function renderPhasePlaying(gd) {
 
 function renderPhaseReview(gd) {
   $('phase-review').classList.remove('hidden');
-  clearInterval(timerInterval);
-  $('g-timer').textContent = '—';
-  $('g-timer').classList.remove('urgent');
+  clearInterval(timerInterval); $('g-timer').textContent = '—'; $('g-timer').classList.remove('urgent');
   $('review-sub').textContent = isHost
     ? 'Снимите галочку с НЕугаданных слов и нажмите "Подтвердить"'
     : 'Хост разбирает результаты раунда...';
-  const list = $('review-words-list');
-  list.innerHTML = '';
-  reviewResults = {};
+  const list = $('review-words-list'); list.innerHTML = ''; reviewResults = {};
   (gd.reviewWords || []).forEach(({ word }) => {
     reviewResults[word] = true;
     const row = document.createElement('div');
@@ -526,19 +476,14 @@ function renderPhaseReview(gd) {
 }
 
 function renderWinner() {
-  const gd = state.gameData;
-  if (!gd || !gd.winner) return;
+  const gd = state.gameData; if (!gd || !gd.winner) return;
   clearInterval(timerInterval);
   const team = state.teams[gd.winner];
   $('winner-team-name').textContent = team.name;
-  const playersEl = $('winner-players');
-  playersEl.innerHTML = '';
+  const playersEl = $('winner-players'); playersEl.innerHTML = '';
   team.players.forEach(pid => {
-    const p = state.players[pid];
-    if (!p) return;
-    const span = document.createElement('div');
-    span.className = 'winner-player-nick';
-    span.textContent = p.nick;
+    const p = state.players[pid]; if (!p) return;
+    const span = document.createElement('div'); span.className = 'winner-player-nick'; span.textContent = p.nick;
     playersEl.appendChild(span);
   });
   if (isHost) $('restart-btn').classList.remove('hidden');
@@ -555,8 +500,7 @@ function startTimer(endTime) {
     timerEl.classList.toggle('urgent', left <= 10);
     if (left <= 0) clearInterval(timerInterval);
   }
-  tick();
-  timerInterval = setInterval(tick, 200);
+  tick(); timerInterval = setInterval(tick, 200);
 }
 
 // ===== MODALS =====
@@ -605,26 +549,16 @@ function getMyTeam() {
   if (!state) return null;
   return Object.values(state.teams).find(t => t.players.includes(myId)) || null;
 }
-
 function updateHostBadge() {
-  if (isHost) {
-    $('host-badge').classList.remove('hidden');
-    $('host-controls')?.classList.remove('hidden');
-  } else {
-    $('host-badge').classList.add('hidden');
-    $('host-controls')?.classList.add('hidden');
-  }
+  if (isHost) { $('host-badge').classList.remove('hidden'); $('host-controls')?.classList.remove('hidden'); }
+  else { $('host-badge').classList.add('hidden'); $('host-controls')?.classList.add('hidden'); }
 }
-
 function showError(id, msg) {
-  const el = $(id);
-  if (!el) return;
+  const el = $(id); if (!el) return;
   el.textContent = msg;
   clearTimeout(el._t);
   el._t = setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
 }
-
 function clearError(id) {
-  const el = $(id);
-  if (el) el.textContent = '';
+  const el = $(id); if (el) el.textContent = '';
 }
