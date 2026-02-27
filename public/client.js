@@ -19,6 +19,7 @@ function showScreen(name) {
 $('join-btn').addEventListener('click', () => {
   const nick = $('nick-input').value.trim();
   if (!nick) return showError('register-error', 'Введите ник');
+  if (nick.length < 2 || nick.length > 20) return showError('register-error', 'Ник: от 2 до 20 символов');
   clearError('register-error');
   socket.emit('register', { nick });
 });
@@ -130,7 +131,7 @@ $('next-word-btn').addEventListener('click', () => socket.emit('next_word'));
 $('submit-review-btn').addEventListener('click', () => socket.emit('submit_review', { results: reviewResults }));
 $('restart-btn').addEventListener('click', () => socket.emit('restart_game'));
 
-// ===== SOCKET =====
+// ===== SOCKET EVENTS =====
 socket.on('registered', ({ id, isHost: host }) => {
   myId = id;
   isHost = host;
@@ -152,6 +153,7 @@ socket.on('error_msg', (msg) => {
       const modal = el.closest('.modal');
       if (modal && !modal.classList.contains('hidden')) { showError(id, msg); shown = true; }
     });
+    if (!shown) showError('start-error', msg);
   } else {
     showError('start-error', msg);
   }
@@ -165,27 +167,42 @@ socket.on('current_word', (word) => {
   requestAnimationFrame(() => { el.style.animation = ''; el.textContent = word; });
 });
 
+// ФИкс: кик больше не выбрасывает с сайта — только убирает из команды
+socket.on('kick_from_team', () => {
+  // Показываем уведомление, остаёмся в лобби
+  showKickNotice();
+});
+
+// Полный кик с сайта (на случай если понадобится)
 socket.on('kicked', () => location.reload());
 
 socket.on('state', (s) => {
+  // КЛЮЧЕВОЙ ФИкс бага с гонкой ников:
+  // Обновляем state только если мы УЖЕ зарегистрированы (myId не null).
+  // Если myId === null — мы ещё на экране регистрации, стейт нас не касается.
+  if (!myId) return;
+
+  // Дополнительная проверка: если нас нет в state.players — значит нас кикнули
+  // или произошло что-то странное. Не обрабатываем такой стейт.
+  if (!s.players[myId]) return;
+
   state = s;
-  if (state.players[myId]) {
-    isHost = state.players[myId].isHost;
-    // Фикс смены ника: всегда синхронизируем из сервера
-    const serverNick = state.players[myId].nick;
-    if (serverNick && serverNick !== myNick) {
-      myNick = serverNick;
-      $('topbar-nick').textContent = myNick;
-      $('profile-nick-display').textContent = myNick;
-    }
+  isHost = state.players[myId].isHost;
+
+  // Синхронизируем ник из сервера
+  const serverNick = state.players[myId].nick;
+  if (serverNick && serverNick !== myNick) {
+    myNick = serverNick;
+    $('topbar-nick').textContent = myNick;
+    $('profile-nick-display').textContent = myNick;
   }
+
   updateHostBadge();
 
   if (state.gameState === 'lobby') { showScreen('lobby'); renderLobby(); }
   else if (state.gameState === 'playing') { showScreen('game'); renderGame(); }
   else if (state.gameState === 'game_over') { showScreen('winner'); renderWinner(); }
 
-  // Закрываем модалки после успешных действий
   if (state.gameState === 'lobby') {
     const myTeam = getMyTeam();
     const cm = $('modal-create-team');
@@ -195,9 +212,30 @@ socket.on('state', (s) => {
   }
 });
 
-// ===== LOBBY =====
+// ===== KICK NOTICE =====
+function showKickNotice() {
+  // Показываем баннер "Вас убрали из команды"
+  let banner = $('kick-notice');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'kick-notice';
+    banner.style.cssText = `
+      position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+      background: #e53e3e; color: white; padding: 12px 24px; border-radius: 10px;
+      font-size: 0.95rem; font-weight: 600; z-index: 9999;
+      box-shadow: 0 4px 20px rgba(229,62,62,0.4);
+      animation: fadeIn 0.3s ease;
+    `;
+    document.body.appendChild(banner);
+  }
+  banner.textContent = '⚠ Вас убрали из команды';
+  banner.style.display = 'block';
+  clearTimeout(banner._t);
+  banner._t = setTimeout(() => { banner.style.display = 'none'; }, 4000);
+}
+
+// ===== RENDER LOBBY =====
 function renderLobby() {
-  // Синхронизируем ник из стейта
   const me = state.players[myId];
   if (me) { myNick = me.nick; $('topbar-nick').textContent = myNick; }
 
@@ -209,7 +247,6 @@ function renderLobby() {
     $('host-controls').classList.add('hidden');
   }
 
-  // Команды — используем teamsOrder с сервера для консистентного порядка
   const teamsEl = $('teams-list');
   teamsEl.innerHTML = '';
   const order = state.teamsOrder || Object.keys(state.teams);
@@ -225,7 +262,6 @@ function renderLobby() {
     });
   }
 
-  // Наблюдатели
   const obsEl = $('observers-list');
   obsEl.innerHTML = '';
   state.observers.forEach(pid => {
@@ -249,13 +285,10 @@ function renderLobby() {
 }
 
 function renderTeamCard(team, container) {
-  // Проверяем напрямую по массиву players — надёжнее чем getMyTeam()
   const isMine = team.players.includes(myId);
-  // Я в какой-то команде вообще?
   const amInAnyTeam = Object.values(state.teams).some(t => t.players.includes(myId));
   const isCreator = team.creatorId === myId;
   const isFull = team.players.length >= 2;
-  // Вступить: только если я не в команде И команда не полная
   const canJoin = !amInAnyTeam && !isFull;
 
   const card = document.createElement('div');
@@ -271,7 +304,6 @@ function renderTeamCard(team, container) {
   const btns = document.createElement('div');
   btns.className = 'team-card-btns';
 
-  // Переименовать — только создатель
   if (isCreator) {
     const renBtn = document.createElement('button');
     renBtn.className = 'btn-ghost btn-sm';
@@ -286,7 +318,6 @@ function renderTeamCard(team, container) {
     btns.appendChild(renBtn);
   }
 
-  // Выйти из своей / Вступить в чужую
   if (isMine) {
     const leaveBtn = document.createElement('button');
     leaveBtn.className = 'btn-danger btn-sm';
@@ -301,7 +332,6 @@ function renderTeamCard(team, container) {
     btns.appendChild(joinBtn);
   }
 
-  // Кик и передача хоста — только хост, только для чужих
   if (isHost) {
     team.players.forEach(pid => {
       if (pid === myId) return;
@@ -322,7 +352,6 @@ function renderTeamCard(team, container) {
   header.appendChild(btns);
   card.appendChild(header);
 
-  // Участники + пустые слоты
   const members = document.createElement('div');
   members.className = 'team-members-list';
   team.players.forEach(pid => {
@@ -343,7 +372,7 @@ function renderTeamCard(team, container) {
   container.appendChild(card);
 }
 
-// ===== GAME =====
+// ===== RENDER GAME =====
 function renderGame() {
   const gd = state.gameData;
   if (!gd) return;
