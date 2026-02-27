@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALIAS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="dark">
+
+<!-- REGISTER SCREEN -->
+<div id="screen-register" class="screen active">
+  <div class="register-bg">
+    <div class="register-card">
+      <div class="logo-big">ALIAS</div>
+      <p class="register-sub">Угадай слово раньше других</p>
+      <div class="input-group">
+        <input type="text" id="nick-input" placeholder="Ваш ник" maxlength="20" autocomplete="off">
+        <button id="join-btn" class="btn-primary">Войти в лобби</button>
+      </div>
+      <div id="register-error" class="error-msg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LOBBY SCREEN -->
+<div id="screen-lobby" class="screen">
+  <div class="topbar">
+    <button id="profile-btn" class="topbar-btn left">
+      <span class="icon">👤</span>
+      <span id="topbar-nick">Ник</span>
+      <span id="host-badge" class="host-badge hidden">ХОСТ</span>
+    </button>
+    <div class="topbar-logo">ALIAS</div>
+    <button id="settings-btn" class="topbar-btn right">
+      <span class="icon">⚙️</span> Настройки
+    </button>
+  </div>
+
+  <div class="lobby-layout">
+    <div class="teams-area">
+      <div class="section-title">Команды</div>
+      <button id="create-team-btn" class="btn-secondary create-team-main">+ Создать команду</button>
+      <div id="teams-list" class="teams-list"></div>
+    </div>
+    <div class="observers-area">
+      <div class="section-title">Наблюдатели</div>
+      <div id="observers-list" class="observers-list"></div>
+    </div>
+  </div>
+
+  <div id="host-controls" class="host-controls hidden">
+    <button id="start-game-btn" class="btn-primary btn-start">▶ Начать игру</button>
+    <div id="start-error" class="error-msg"></div>
+  </div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="screen-game" class="screen">
+  <div class="topbar">
+    <button id="g-settings-btn" class="topbar-btn left">⚙️ Правила</button>
+    <div class="topbar-logo">ALIAS</div>
+    <div id="g-timer" class="timer-display">—</div>
+  </div>
+
+  <div class="game-layout">
+    <div class="game-teams-panel">
+      <div class="section-title">Счёт</div>
+      <div id="game-teams-list" class="game-teams-list"></div>
+    </div>
+
+    <div class="game-center">
+
+      <!-- Phase: ждём готовности -->
+      <div id="phase-ready" class="game-phase">
+        <div class="phase-title" id="ready-title">Подготовка</div>
+        <div class="phase-sub" id="ready-sub"></div>
+        <div id="ready-status" class="ready-status"></div>
+        <button id="ready-btn" class="btn-primary btn-ready hidden">✓ Я готов</button>
+      </div>
+
+      <!-- Phase: объясняющий нажимает старт -->
+      <div id="phase-explainer-start" class="game-phase hidden">
+        <div class="phase-title" id="explainer-start-title">Все готовы!</div>
+        <div class="phase-sub" id="explainer-start-sub"></div>
+        <button id="explainer-start-btn" class="btn-primary btn-ready hidden">🚀 Начать раунд</button>
+      </div>
+
+      <!-- Phase: игра идёт -->
+      <div id="phase-playing" class="game-phase hidden">
+        <div id="word-area" class="word-area">
+          <div id="current-word-display" class="current-word">???</div>
+          <button id="next-word-btn" class="btn-next hidden">Следующее ▶</button>
+        </div>
+        <div id="prev-words-container" class="prev-words-container">
+          <div class="section-title small">Предыдущие слова</div>
+          <div id="prev-words-list" class="prev-words-list"></div>
+        </div>
+      </div>
+
+      <!-- Phase: разбор раунда -->
+      <div id="phase-review" class="game-phase hidden">
+        <div class="phase-title">Разбор раунда</div>
+        <div class="phase-sub" id="review-sub">Снимите галочку с НЕугаданных слов</div>
+        <div id="review-words-list" class="review-words-list"></div>
+        <button id="submit-review-btn" class="btn-primary hidden">Подтвердить</button>
+      </div>
+
+    </div>
+
+    <div class="game-observers-panel">
+      <div class="section-title">Наблюдатели</div>
+      <div id="game-observers-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- WINNER SCREEN -->
+<div id="screen-winner" class="screen">
+  <div class="winner-bg">
+    <div class="winner-content">
+      <div class="winner-label">ПОБЕДИТЕЛИ</div>
+      <div id="winner-team-name" class="winner-team"></div>
+      <div id="winner-players" class="winner-players"></div>
+      <button id="restart-btn" class="btn-primary btn-restart hidden">↩ Новая игра</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div id="modal-overlay" class="modal-overlay hidden">
+
+  <!-- Create team -->
+  <div id="modal-create-team" class="modal hidden">
+    <div class="modal-title">Создать команду</div>
+    <input type="text" id="team-name-input" placeholder="Название команды" maxlength="30">
+    <div id="create-team-error" class="error-msg"></div>
+    <div class="modal-actions">
+      <button id="modal-create-cancel" class="btn-ghost">Отмена</button>
+      <button id="modal-create-confirm" class="btn-primary">Создать</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="modal-settings" class="modal hidden">
+    <div class="modal-title">Настройки</div>
+    <div class="setting-group">
+      <label>Длительность раунда (сек)</label>
+      <input type="number" id="setting-duration" min="10" max="300" value="60">
+    </div>
+    <div class="setting-group">
+      <label>Слов для победы</label>
+      <input type="number" id="setting-words" min="5" max="100" value="20">
+    </div>
+    <div class="setting-group">
+      <label>Сложность</label>
+      <div class="diff-buttons">
+        <button class="diff-btn" data-diff="easy">Лёгкая</button>
+        <button class="diff-btn active" data-diff="normal">Нормальная</button>
+        <button class="diff-btn" data-diff="hard">Сложная</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <label>Тема</label>
+      <div class="theme-toggle">
+        <button id="theme-dark" class="diff-btn active">🌙 Тёмная</button>
+        <button id="theme-light" class="diff-btn">☀️ Светлая</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <label>Цвет акцента</label>
+      <div class="color-presets" id="color-presets">
+        <div class="color-preset active" data-color="#5b6ef5" style="background:#5b6ef5" title="Синий"></div>
+        <div class="color-preset" data-color="#e53e3e" style="background:#e53e3e" title="Красный"></div>
+        <div class="color-preset" data-color="#3ecf8e" style="background:#3ecf8e" title="Зелёный"></div>
+        <div class="color-preset" data-color="#9b59b6" style="background:#9b59b6" title="Фиолетовый"></div>
+        <div class="color-preset" data-color="#f39c12" style="background:#f39c12" title="Оранжевый"></div>
+        <div class="color-preset" data-color="#e91e8c" style="background:#e91e8c" title="Розовый"></div>
+        <div class="color-preset" data-color="#ff5722" style="background:#ff5722" title="Коралловый"></div>
+      </div>
+      <div class="color-picker-row">
+        <span style="font-size:0.8rem;color:var(--text2)">Свой цвет:</span>
+        <input type="color" id="custom-color-picker" value="#5b6ef5">
+      </div>
+    </div>
+    <div id="settings-error" class="error-msg"></div>
+    <div class="modal-actions">
+      <button id="modal-settings-close" class="btn-ghost">Закрыть</button>
+      <button id="modal-settings-save" class="btn-primary">Сохранить</button>
+    </div>
+  </div>
+
+  <!-- Profile -->
+  <div id="modal-profile" class="modal hidden">
+    <div class="modal-title">Профиль</div>
+    <div class="profile-nick" id="profile-nick-display"></div>
+    <div class="setting-group" style="margin-top:14px">
+      <label>Изменить ник</label>
+      <input type="text" id="new-nick-input" placeholder="Новый ник" maxlength="20" autocomplete="off">
+      <div id="nick-change-error" class="error-msg"></div>
+    </div>
+    <div class="modal-actions">
+      <button id="modal-profile-close" class="btn-ghost">Закрыть</button>
+      <button id="modal-profile-save" class="btn-primary">Сохранить ник</button>
+    </div>
+  </div>
+
+  <!-- Rules (in-game) -->
+  <div id="modal-rules" class="modal hidden">
+    <div class="modal-title">Правила игры</div>
+    <div id="rules-content" class="rules-content"></div>
+    <div class="modal-actions">
+      <button id="modal-rules-close" class="btn-ghost">Закрыть</button>
+    </div>
+  </div>
+
+  <!-- Rename team -->
+  <div id="modal-rename" class="modal hidden">
+    <div class="modal-title">Переименовать команду</div>
+    <input type="text" id="rename-input" placeholder="Новое название" maxlength="30">
+    <div id="rename-error" class="error-msg"></div>
+    <div class="modal-actions">
+      <button id="modal-rename-cancel" class="btn-ghost">Отмена</button>
+      <button id="modal-rename-confirm" class="btn-primary">Сохранить</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="client.js"></script>
+</body>
+</html>
