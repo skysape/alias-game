@@ -87,15 +87,16 @@ function shuffle(arr) {
 
 // ===== STATE =====
 let lobby = {
-  players: {},
+  players: {},  // socketId -> { id, nick, isHost }  (только зарегистрированные — с ником)
   teams: {},
   settings: { roundDuration: 60, wordsToWin: 20, difficulty: 'normal' },
   gameState: 'lobby',
   gameData: null
 };
 
+// Только среди зарегистрированных игроков (с ником)
 function getPlayerByNick(nick) {
-  return Object.values(lobby.players).find(p => p.nick.toLowerCase() === nick.toLowerCase());
+  return Object.values(lobby.players).find(p => p.nick && p.nick.toLowerCase() === nick.toLowerCase());
 }
 function getTeamByName(name) {
   return Object.values(lobby.teams).find(t => t.name.toLowerCase() === name.toLowerCase());
@@ -107,8 +108,6 @@ function getObservers() {
   const inTeam = new Set(Object.values(lobby.teams).flatMap(t => t.players));
   return Object.values(lobby.players).filter(p => !inTeam.has(p.id)).map(p => p.id);
 }
-
-// Удалить команду если пустая
 function cleanupTeam(team) {
   if (team && team.players.length === 0) {
     delete lobby.teams[team.id];
@@ -122,14 +121,12 @@ function broadcastState() {
 }
 
 function buildClientState() {
-  // Сортируем команды по времени создания — передаём массив для консистентного порядка
   const teamsArray = Object.values(lobby.teams)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-
   return {
     players: lobby.players,
-    teams: lobby.teams,          // объект для поиска по id
-    teamsOrder: teamsArray.map(t => t.id),  // массив id в правильном порядке
+    teams: lobby.teams,
+    teamsOrder: teamsArray.map(t => t.id),
     settings: lobby.settings,
     gameState: lobby.gameState,
     gameData: lobby.gameData ? sanitizeGameData() : null,
@@ -176,17 +173,13 @@ function setupNextRound() {
   gd.roundWords = [];
   gd.previousWords = [];
   gd.currentWord = null;
-
   const teamId = gd.teamOrder[gd.currentTeamIndex];
   const team = lobby.teams[teamId];
   const roundNum = gd.teamRounds[teamId] || 0;
-
-  // Чётный раунд — объясняет создатель, нечётный — второй игрок
   const creatorIndex = team.players.indexOf(team.creatorId);
   const otherIndex = creatorIndex === 0 ? 1 : 0;
   gd.explainerSocketId = team.players[roundNum % 2 === 0 ? creatorIndex : otherIndex];
   gd.teamRounds[teamId] = roundNum + 1;
-
   broadcastState();
 }
 
@@ -217,16 +210,26 @@ function endRound() {
 // ===== SOCKET =====
 io.on('connection', (socket) => {
 
+  // REGISTER
+  // Баг-фикс: если этот socket уже зарегистрирован — не обрабатываем повторный register.
+  // Это предотвращает ситуацию когда два человека одновременно набирают ник,
+  // и broadcastState от первого "перекидывает" второго в лобби без ника.
   socket.on('register', ({ nick }) => {
+    // Если уже зарегистрирован — игнорируем
+    if (lobby.players[socket.id]) return;
+
     nick = (nick || '').trim();
     if (nick.length < 2 || nick.length > 20) { socket.emit('error_msg', 'Ник: от 2 до 20 символов'); return; }
     if (getPlayerByNick(nick)) { socket.emit('error_msg', 'Такой ник уже занят'); return; }
+
+    // Хост — первый зарегистрированный игрок
     const isHost = Object.keys(lobby.players).length === 0;
     lobby.players[socket.id] = { id: socket.id, nick, isHost };
     socket.emit('registered', { id: socket.id, isHost });
     broadcastState();
   });
 
+  // RENAME NICK
   socket.on('rename_nick', ({ nick }) => {
     nick = (nick || '').trim();
     if (nick.length < 2 || nick.length > 20) { socket.emit('error_msg', 'Ник: от 2 до 20 символов'); return; }
@@ -239,10 +242,12 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // CREATE TEAM
   socket.on('create_team', ({ name }) => {
     name = (name || '').trim();
     if (!name || name.length > 30) { socket.emit('error_msg', 'Некорректное название'); return; }
     if (lobby.gameState !== 'lobby') { socket.emit('error_msg', 'Игра уже началась'); return; }
+    if (!lobby.players[socket.id]) return; // не зарегистрирован
     if (getPlayerTeam(socket.id)) { socket.emit('error_msg', 'Вы уже в команде'); return; }
     if (getTeamByName(name)) { socket.emit('error_msg', 'Такое название уже занято'); return; }
     const teamId = uuidv4();
@@ -250,6 +255,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // RENAME TEAM
   socket.on('rename_team', ({ teamId, name }) => {
     name = (name || '').trim();
     const team = lobby.teams[teamId];
@@ -262,8 +268,10 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // JOIN TEAM
   socket.on('join_team', ({ teamId }) => {
     if (lobby.gameState !== 'lobby') { socket.emit('error_msg', 'Игра уже началась'); return; }
+    if (!lobby.players[socket.id]) return;
     const team = lobby.teams[teamId];
     if (!team) return;
     if (team.players.length >= 2) { socket.emit('error_msg', 'Команда уже полная'); return; }
@@ -272,6 +280,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // LEAVE TEAM
   socket.on('leave_team', () => {
     if (lobby.gameState !== 'lobby') return;
     const team = getPlayerTeam(socket.id);
@@ -282,6 +291,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // UPDATE SETTINGS
   socket.on('update_settings', ({ roundDuration, wordsToWin, difficulty }) => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) { socket.emit('error_msg', 'Только хост может менять настройки'); return; }
@@ -292,21 +302,30 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // KICK PLAYER
+  // Фикс: кик больше НЕ удаляет игрока из lobby.players.
+  // Он просто убирается из команды и становится наблюдателем.
+  // Игрок получает сообщение 'kick_from_team' — он остаётся на сайте.
   socket.on('kick_player', ({ targetId }) => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) return;
-    if (targetId === socket.id || !lobby.players[targetId]) return;
+    if (targetId === socket.id) return;
+    const target = lobby.players[targetId];
+    if (!target) return;
+
     const team = getPlayerTeam(targetId);
     if (team) {
       team.players = team.players.filter(id => id !== targetId);
       if (team.creatorId === targetId && team.players.length > 0) team.creatorId = team.players[0];
-      cleanupTeam(team);  // удаляем если пустая
+      cleanupTeam(team);
     }
-    delete lobby.players[targetId];
-    io.to(targetId).emit('kicked');
+
+    // Сообщаем игроку что его кикнули из команды (не с сайта)
+    io.to(targetId).emit('kick_from_team');
     broadcastState();
   });
 
+  // TRANSFER HOST
   socket.on('transfer_host', ({ targetId }) => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) return;
@@ -317,6 +336,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // START GAME
   socket.on('start_game', () => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) { socket.emit('error_msg', 'Только хост может начать игру'); return; }
@@ -343,6 +363,7 @@ io.on('connection', (socket) => {
     setupNextRound();
   });
 
+  // PLAYER READY
   socket.on('player_ready', () => {
     const gd = lobby.gameData;
     if (!gd || gd.phase !== 'waiting_ready') return;
@@ -354,6 +375,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // EXPLAINER START
   socket.on('explainer_start', () => {
     const gd = lobby.gameData;
     if (!gd || gd.phase !== 'explainer_start') return;
@@ -361,6 +383,7 @@ io.on('connection', (socket) => {
     startRound();
   });
 
+  // NEXT WORD
   socket.on('next_word', () => {
     const gd = lobby.gameData;
     if (!gd || gd.phase !== 'playing' || !gd.roundActive) return;
@@ -375,6 +398,7 @@ io.on('connection', (socket) => {
     sendWordToExplainer();
   });
 
+  // SUBMIT REVIEW
   socket.on('submit_review', ({ results }) => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) return;
@@ -395,6 +419,7 @@ io.on('connection', (socket) => {
     setupNextRound();
   });
 
+  // RESTART
   socket.on('restart_game', () => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) return;
@@ -405,6 +430,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // DISCONNECT
   socket.on('disconnect', () => {
     const player = lobby.players[socket.id];
     if (!player) return;
@@ -412,7 +438,7 @@ io.on('connection', (socket) => {
     if (team) {
       team.players = team.players.filter(id => id !== socket.id);
       if (team.creatorId === socket.id && team.players.length > 0) team.creatorId = team.players[0];
-      cleanupTeam(team);  // удаляем если пустая
+      cleanupTeam(team);
     }
     const wasHost = player.isHost;
     delete lobby.players[socket.id];
