@@ -124,9 +124,7 @@ $('next-word-btn').addEventListener('click', () => socket.emit('next_word'));
 $('submit-review-btn').addEventListener('click', () => socket.emit('submit_review', { results: reviewResults }));
 $('restart-btn').addEventListener('click', () => socket.emit('restart_game'));
 
-// ===== SERVER SUCCESS EVENTS — закрываем модалки только здесь =====
-
-// Ник успешно изменён
+// ===== SERVER SUCCESS EVENTS =====
 socket.on('nick_changed', ({ nick }) => {
   myNick = nick;
   $('topbar-nick').textContent = nick;
@@ -134,21 +132,12 @@ socket.on('nick_changed', ({ nick }) => {
   showError('nick-change-error', '✓ Сохранено!');
   setTimeout(() => closeModal(), 800);
 });
+socket.on('team_created', () => closeModal());
+socket.on('team_renamed', () => closeModal());
 
-// Команда успешно создана
-socket.on('team_created', () => {
-  closeModal();
-});
-
-// Команда успешно переименована
-socket.on('team_renamed', () => {
-  closeModal();
-});
-
-// ===== SOCKET EVENTS =====
+// ===== MAIN SOCKET EVENTS =====
 socket.on('registered', ({ id, isHost: host }) => {
-  myId = id;
-  isHost = host;
+  myId = id; isHost = host;
   myNick = $('nick-input').value.trim();
   $('topbar-nick').textContent = myNick;
   $('profile-nick-display').textContent = myNick;
@@ -162,8 +151,7 @@ socket.on('error_msg', (msg) => {
     let shown = false;
     ['create-team-error','rename-error','settings-error','nick-change-error'].forEach(id => {
       if (shown) return;
-      const el = $(id);
-      if (!el) return;
+      const el = $(id); if (!el) return;
       const modal = el.closest('.modal');
       if (modal && !modal.classList.contains('hidden')) { showError(id, msg); shown = true; }
     });
@@ -174,8 +162,7 @@ socket.on('error_msg', (msg) => {
 });
 
 socket.on('current_word', (word) => {
-  const el = $('current-word-display');
-  if (!el) return;
+  const el = $('current-word-display'); if (!el) return;
   el.classList.remove('blur-word');
   el.style.animation = 'none';
   requestAnimationFrame(() => { el.style.animation = ''; el.textContent = word; });
@@ -185,27 +172,20 @@ socket.on('kick_from_team', () => showKickNotice());
 socket.on('kicked', () => location.reload());
 
 socket.on('state', (s) => {
-  // Игнорируем пока не зарегистрированы — фикс гонки ников
   if (!myId) return;
   if (!s.players[myId]) return;
-
   state = s;
   isHost = state.players[myId].isHost;
-
-  // Синхронизируем ник
   const serverNick = state.players[myId].nick;
   if (serverNick && serverNick !== myNick) {
     myNick = serverNick;
     $('topbar-nick').textContent = myNick;
     $('profile-nick-display').textContent = myNick;
   }
-
   updateHostBadge();
-
   if (state.gameState === 'lobby') { showScreen('lobby'); renderLobby(); }
   else if (state.gameState === 'playing') { showScreen('game'); renderGame(); }
   else if (state.gameState === 'game_over') { showScreen('winner'); renderWinner(); }
-  // Модалки НЕ закрываем из state — только из конкретных событий выше
 });
 
 // ===== KICK NOTICE =====
@@ -227,13 +207,11 @@ function showKickNotice() {
 function renderLobby() {
   const me = state.players[myId];
   if (me) { myNick = me.nick; $('topbar-nick').textContent = myNick; }
-
   if (isHost) {
     $('host-badge').classList.remove('hidden'); $('host-controls').classList.remove('hidden');
   } else {
     $('host-badge').classList.add('hidden'); $('host-controls').classList.add('hidden');
   }
-
   const teamsEl = $('teams-list');
   teamsEl.innerHTML = '';
   const order = state.teamsOrder || Object.keys(state.teams);
@@ -243,17 +221,12 @@ function renderLobby() {
     empty.textContent = 'Нет команд. Создайте первую!';
     teamsEl.appendChild(empty);
   } else {
-    order.forEach(teamId => {
-      const team = state.teams[teamId];
-      if (team) renderTeamCard(team, teamsEl);
-    });
+    order.forEach(tid => { const t = state.teams[tid]; if (t) renderTeamCard(t, teamsEl); });
   }
-
   const obsEl = $('observers-list');
   obsEl.innerHTML = '';
   state.observers.forEach(pid => {
-    const p = state.players[pid];
-    if (!p) return;
+    const p = state.players[pid]; if (!p) return;
     const div = document.createElement('div');
     div.className = 'observer-item' + (pid === myId ? ' is-me' : '');
     div.innerHTML = `<span>${p.nick}${p.isHost ? ' 👑' : ''}</span>`;
@@ -302,31 +275,29 @@ function renderTeamCard(team, container) {
     });
     btns.appendChild(renBtn);
   }
-
   if (isMine) {
-    const leaveBtn = document.createElement('button');
-    leaveBtn.className = 'btn-danger btn-sm'; leaveBtn.textContent = 'Выйти';
-    leaveBtn.addEventListener('click', () => socket.emit('leave_team'));
-    btns.appendChild(leaveBtn);
+    const lb = document.createElement('button');
+    lb.className = 'btn-danger btn-sm'; lb.textContent = 'Выйти';
+    lb.addEventListener('click', () => socket.emit('leave_team'));
+    btns.appendChild(lb);
   } else if (canJoin) {
-    const joinBtn = document.createElement('button');
-    joinBtn.className = 'btn-primary btn-sm'; joinBtn.textContent = 'Вступить';
-    joinBtn.addEventListener('click', () => socket.emit('join_team', { teamId: team.id }));
-    btns.appendChild(joinBtn);
+    const jb = document.createElement('button');
+    jb.className = 'btn-primary btn-sm'; jb.textContent = 'Вступить';
+    jb.addEventListener('click', () => socket.emit('join_team', { teamId: team.id }));
+    btns.appendChild(jb);
   }
-
   if (isHost) {
     team.players.forEach(pid => {
       if (pid === myId) return;
-      const kickBtn = document.createElement('button');
-      kickBtn.className = 'btn-danger btn-sm';
-      kickBtn.textContent = `✕ ${state.players[pid]?.nick || '?'}`;
-      kickBtn.addEventListener('click', () => socket.emit('kick_player', { targetId: pid }));
-      btns.appendChild(kickBtn);
-      const thBtn = document.createElement('button');
-      thBtn.className = 'btn-ghost btn-sm'; thBtn.textContent = '→ Хост';
-      thBtn.addEventListener('click', () => socket.emit('transfer_host', { targetId: pid }));
-      btns.appendChild(thBtn);
+      const kb = document.createElement('button');
+      kb.className = 'btn-danger btn-sm';
+      kb.textContent = `✕ ${state.players[pid]?.nick || '?'}`;
+      kb.addEventListener('click', () => socket.emit('kick_player', { targetId: pid }));
+      btns.appendChild(kb);
+      const hb = document.createElement('button');
+      hb.className = 'btn-ghost btn-sm'; hb.textContent = '→ Хост';
+      hb.addEventListener('click', () => socket.emit('transfer_host', { targetId: pid }));
+      btns.appendChild(hb);
     });
   }
 
@@ -335,8 +306,7 @@ function renderTeamCard(team, container) {
   const members = document.createElement('div');
   members.className = 'team-members-list';
   team.players.forEach(pid => {
-    const p = state.players[pid];
-    if (!p) return;
+    const p = state.players[pid]; if (!p) return;
     const row = document.createElement('div');
     row.className = 'team-member-row' + (pid === myId ? ' is-me' : '');
     row.textContent = p.nick + (p.isHost ? ' 👑' : '');
@@ -353,18 +323,29 @@ function renderTeamCard(team, container) {
 
 // ===== RENDER GAME =====
 function renderGame() {
-  const gd = state.gameData;
-  if (!gd) return;
+  const gd = state.gameData; if (!gd) return;
 
+  // Панель команд
   const teamsEl = $('game-teams-list');
   teamsEl.innerHTML = '';
   gd.teamOrder.forEach((teamId, idx) => {
-    const team = state.teams[teamId];
-    if (!team) return;
+    const team = state.teams[teamId]; if (!team) return;
     const card = document.createElement('div');
     card.className = 'game-team-card' + (idx === gd.currentTeamIndex ? ' active-turn' : '');
+
     const nameEl = document.createElement('div'); nameEl.className = 'game-team-name'; nameEl.textContent = team.name;
     const scoreEl = document.createElement('div'); scoreEl.className = 'game-team-score'; scoreEl.textContent = gd.scores[teamId] || 0;
+
+    // Количество раундов команды (показываем в финальном режиме)
+    if (gd.winTriggered && gd.roundsCompleted) {
+      const roundsEl = document.createElement('div');
+      roundsEl.className = 'game-team-rounds';
+      roundsEl.textContent = `раундов: ${gd.roundsCompleted[teamId] || 0}`;
+      card.appendChild(nameEl); card.appendChild(scoreEl); card.appendChild(roundsEl);
+    } else {
+      card.appendChild(nameEl); card.appendChild(scoreEl);
+    }
+
     const playersEl = document.createElement('div'); playersEl.className = 'game-team-players';
     team.players.forEach(pid => {
       const p = state.players[pid]; if (!p) return;
@@ -374,7 +355,7 @@ function renderGame() {
       nick.textContent = p.nick + (isExp ? ' 🎤' : '');
       playersEl.appendChild(nick);
     });
-    card.appendChild(nameEl); card.appendChild(scoreEl); card.appendChild(playersEl);
+    card.appendChild(playersEl);
     teamsEl.appendChild(card);
   });
 
@@ -386,6 +367,21 @@ function renderGame() {
     d.className = 'observer-item' + (pid === myId ? ' is-me' : ''); d.textContent = p.nick;
     obsEl.appendChild(d);
   });
+
+  // Баннер финального круга
+  let finalBanner = $('final-round-banner');
+  if (gd.winTriggered) {
+    if (!finalBanner) {
+      finalBanner = document.createElement('div');
+      finalBanner.id = 'final-round-banner';
+      finalBanner.style.cssText = 'background:linear-gradient(135deg,#f6ad55,#ed8936);color:white;text-align:center;padding:10px 20px;border-radius:10px;font-weight:700;font-size:1rem;margin-bottom:12px;letter-spacing:0.02em';
+      const gameInner = $('game-teams-list').parentElement;
+      gameInner.insertBefore(finalBanner, gameInner.firstChild);
+    }
+    finalBanner.textContent = '🏁 Финальный круг! Все команды доигрывают по одному раунду';
+  } else if (finalBanner) {
+    finalBanner.remove();
+  }
 
   $('phase-ready').classList.add('hidden');
   $('phase-explainer-start').classList.add('hidden');
@@ -403,8 +399,20 @@ function renderPhaseReady(gd) {
   clearInterval(timerInterval); $('g-timer').textContent = '—'; $('g-timer').classList.remove('urgent');
   const teamId = gd.teamOrder[gd.currentTeamIndex];
   const team = state.teams[teamId];
-  $('ready-title').textContent = `Ход команды: ${team.name}`;
-  $('ready-sub').textContent = 'Оба игрока должны нажать "Готов"';
+
+  if (gd.winTriggered) {
+    $('ready-title').textContent = `🏁 Финал — ход: ${team.name}`;
+    // Показываем текущий счёт
+    const scores = gd.teamOrder.map(tid => {
+      const t = state.teams[tid];
+      return `${t.name}: ${gd.scores[tid]}`;
+    }).join(' · ');
+    $('ready-sub').textContent = `Счёт: ${scores}`;
+  } else {
+    $('ready-title').textContent = `Ход команды: ${team.name}`;
+    $('ready-sub').textContent = 'Оба игрока должны нажать "Готов"';
+  }
+
   const statusEl = $('ready-status'); statusEl.innerHTML = '';
   team.players.forEach(pid => {
     const p = state.players[pid]; if (!p) return;
@@ -478,14 +486,38 @@ function renderPhaseReview(gd) {
 function renderWinner() {
   const gd = state.gameData; if (!gd || !gd.winner) return;
   clearInterval(timerInterval);
+
+  // Убираем финальный баннер если остался
+  const fb = $('final-round-banner'); if (fb) fb.remove();
+
   const team = state.teams[gd.winner];
   $('winner-team-name').textContent = team.name;
+
   const playersEl = $('winner-players'); playersEl.innerHTML = '';
   team.players.forEach(pid => {
     const p = state.players[pid]; if (!p) return;
     const span = document.createElement('div'); span.className = 'winner-player-nick'; span.textContent = p.nick;
     playersEl.appendChild(span);
   });
+
+  // Показываем итоговый счёт всех команд
+  let scoreBoard = $('winner-scoreboard');
+  if (!scoreBoard) {
+    scoreBoard = document.createElement('div');
+    scoreBoard.id = 'winner-scoreboard';
+    scoreBoard.style.cssText = 'margin-top:16px;display:flex;flex-direction:column;gap:6px;width:100%;max-width:280px';
+    $('winner-players').after(scoreBoard);
+  }
+  scoreBoard.innerHTML = '';
+  const sortedTeams = [...gd.teamOrder].sort((a, b) => (gd.scores[b] || 0) - (gd.scores[a] || 0));
+  sortedTeams.forEach((tid, i) => {
+    const t = state.teams[tid]; if (!t) return;
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;justify-content:space-between;padding:6px 12px;border-radius:8px;background:${tid === gd.winner ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)'};font-weight:${tid === gd.winner ? '700' : '400'}`;
+    row.innerHTML = `<span>${i + 1}. ${t.name}</span><span>${gd.scores[tid] || 0} слов</span>`;
+    scoreBoard.appendChild(row);
+  });
+
   if (isHost) $('restart-btn').classList.remove('hidden');
   else $('restart-btn').classList.add('hidden');
 }
@@ -533,13 +565,13 @@ function openSettingsModal() {
 
 function openRulesModal() {
   const s = state ? state.settings : { roundDuration: 60, wordsToWin: 20, difficulty: 'normal' };
-  const diffMap = { easy: 'Лёгкая', normal: 'Нормальная', hard: 'Сложная' };
+  const diffMap = { normal: 'Нормальная', hard: 'Тяжёлая' };
   $('rules-content').innerHTML = `
     <div><strong>Длительность раунда:</strong> ${s.roundDuration} сек</div>
     <div><strong>Слов для победы:</strong> ${s.wordsToWin}</div>
     <div><strong>Сложность:</strong> ${diffMap[s.difficulty] || s.difficulty}</div>
     <br>
-    <div>Один игрок объясняет слова, другой угадывает. После раунда хост отмечает угаданные слова. Команды чередуются. Побеждает та, что первой наберёт нужное количество слов.</div>
+    <div>Один игрок объясняет слова, другой угадывает. После раунда хост отмечает угаданные слова. Команды чередуются. Если команда набирает нужное количество слов, остальные команды доигрывают свой раунд — победитель определяется по итогам равного числа ходов.</div>
   `;
   openModal('modal-rules');
 }
@@ -559,6 +591,4 @@ function showError(id, msg) {
   clearTimeout(el._t);
   el._t = setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
 }
-function clearError(id) {
-  const el = $(id); if (el) el.textContent = '';
-}
+function clearError(id) { const el = $(id); if (el) el.textContent = ''; }
