@@ -9,11 +9,71 @@ const server = http.createServer(app);
 const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Две сложности: normal = бывшие easy+normal объединены, hard — без изменений
 const WORDS = {
-  easy: ['кошка','собака','дом','машина','дерево','солнце','вода','еда','стол','стул','книга','ручка','телефон','окно','дверь','нос','рот','рука','нога','глаз','мяч','торт','снег','море','река','гора','цветок','птица','рыба','хлеб','молоко','яблоко','банан','апельсин','морковь','картошка','лук','помидор','сыр','масло','чай','кофе','сок','шапка','куртка','ботинки','платье','рубашка','диван','кровать','лампа','зеркало','часы','ключ','замок','лес','поле','небо','луна','звезда','огонь','лёд','дождь','ветер','облако','кот','пёс','конь','корова','свинья','курица','утка','кролик','мышь','волк','лиса','медведь','заяц','белка','ёж','черепаха','попугай','хомяк','слон','жираф','обезьяна','лев','тигр','дельфин','акула','кит','лягушка','бабочка','пчела','муравей','нож','вилка','ложка','тарелка','кружка','чашка','бутылка','кастрюля','холодильник','телевизор','компьютер','планшет','наушники','фотоаппарат','ручей','озеро','пляж','песок','камень','трава','гриб','ягода','клубника','вишня','груша','слива','виноград','арбуз','тыква','огурец','чеснок','капуста','рис','макароны','суп','каша','пицца','бутерброд','пирог','блин','мороженое','шоколад','конфета','печенье','варенье','мёд','сахар','соль','корабль','самолёт','велосипед','автобус','поезд','метро','такси','трактор','мотоцикл','лодка'],
-  normal: ['зонтик','чемодан','пазл','компас','фонарь','веревка','гамак','аквариум','термос','будильник','фотограф','балкон','подвал','чердак','перекресток','светофор','фонтан','скамейка','памятник','библиотека','аптека','вокзал','аэропорт','стадион','больница','магазин','ресторан','гостиница','парикмахер','плотник','водитель','пожарный','полицейский','врач','учитель','повар','художник','певец','актер','режиссер','журналист','программист','инженер','архитектор','скрипка','барабан','гитара','пианино','флейта','труба','хор','оркестр','балет','опера','театр','кино','выставка','музей','концерт','соревнование','чемпионат','турнир','олимпиада','медаль','трофей','рюкзак','термометр','микроскоп','телескоп','бинокль','гантели','скакалка','теннисная ракетка','шашки','шахматы','карты','монополия','водопад','пещера','вулкан','остров','пустыня','джунгли','тундра','степь','тайга','ледник','трамплин','карусель','качели','батут','боулинг','бильярд','рыбалка','туризм','альпинизм','сёрфинг','дайвинг','парашют','рафтинг','акробат','жонглёр','клоун','фокусник','иллюзионист','танцор','курьер','перчатки','шарф','пальто','свитер','джинсы','носки','пижама','купальник','кольцо','серьги','браслет','ожерелье','галстук','ремень','отвёртка','молоток','пила','дрель','рубанок','гаечный ключ','паспорт','виза','билет','таможня','нарек','меганайт','мама дорофеева','кузя','67','абоба','zov','мать габена','эпштейн','азиец','пендос','абимосик'],
-  hard: ['абстракция','амбиция','апатия','баланс','бюрократия','вакуум','гипотеза','диссонанс','эмпатия','феномен','иерархия','иллюзия','импульс','интуиция','ирония','катарсис','концепция','коррупция','легитимность','манипуляция','меланхолия','метафора','нарратив','нигилизм','парадокс','патетика','перспектива','пессимизм','плюрализм','постулат','прогресс','пропаганда','реализм','рефлексия','скептицизм','стагнация','субъективность','сюрреализм','тоталитаризм','утопия','философия','харизма','цинизм','эволюция','экзистенция','эклектика','элитаризм','энтропия','эрудиция','эстетика','эфемерность','авторитаризм','дискриминация','консенсус','конформизм','демагогия','дилемма','дипломатия','доминирование','дуализм','идеология','импровизация','инновация','инстинкт','интерпретация','коалиция','коммуникация','компромисс','конкуренция','конституция','координация','либерализм','лицемерие','медиация','менталитет','меритократия','мимикрия','модернизация','монополия','мотивация','нейтралитет','объективность','оппортунизм','оптимизм','патриотизм','перфекционизм','популизм','прагматизм','прецедент','прокрастинация','психоанализ','радикализм','рационализм','релятивизм','риторика','романтизм','сарказм','солидарность','социализация','стереотип','стоицизм','суверенитет','тактика','трансформация','универсализм','фанатизм','федерализм','формализм','хаос','цензура','централизация','эгоизм','экспансия','электорат','эмансипация','этика','эффективность']
+  normal: [
+    // бывшая easy
+    'кошка','собака','дом','машина','дерево','солнце','вода','еда','стол','стул',
+    'книга','ручка','телефон','окно','дверь','нос','рот','рука','нога','глаз',
+    'мяч','торт','снег','море','река','гора','цветок','птица','рыба','хлеб',
+    'молоко','яблоко','банан','апельсин','морковь','картошка','лук','помидор',
+    'сыр','масло','чай','кофе','сок','шапка','куртка','ботинки','платье','рубашка',
+    'диван','кровать','лампа','зеркало','часы','ключ','замок','лес','поле','небо',
+    'луна','звезда','огонь','лёд','дождь','ветер','облако','кот','пёс','конь',
+    'корова','свинья','курица','утка','кролик','мышь','волк','лиса','медведь',
+    'заяц','белка','ёж','черепаха','попугай','хомяк','слон','жираф','обезьяна',
+    'лев','тигр','дельфин','акула','кит','лягушка','бабочка','пчела','муравей',
+    'нож','вилка','ложка','тарелка','кружка','чашка','бутылка','кастрюля',
+    'холодильник','телевизор','компьютер','планшет','наушники','фотоаппарат',
+    'ручей','озеро','пляж','песок','камень','трава','гриб','ягода','клубника',
+    'вишня','груша','слива','виноград','арбуз','тыква','огурец','чеснок','капуста',
+    'рис','макароны','суп','каша','пицца','бутерброд','пирог','блин','мороженое',
+    'шоколад','конфета','печенье','варенье','мёд','сахар','соль','корабль','самолёт',
+    'велосипед','автобус','поезд','метро','такси','трактор','мотоцикл','лодка',
+    // бывшая normal
+    'зонтик','чемодан','пазл','компас','фонарь','веревка','гамак','аквариум','термос',
+    'будильник','фотограф','балкон','подвал','чердак','перекресток','светофор','фонтан',
+    'скамейка','памятник','библиотека','аптека','вокзал','аэропорт','стадион','больница',
+    'магазин','ресторан','гостиница','парикмахер','плотник','водитель','пожарный',
+    'полицейский','врач','учитель','повар','художник','певец','актер','режиссер',
+    'журналист','программист','инженер','архитектор','скрипка','барабан','гитара',
+    'пианино','флейта','труба','хор','оркестр','балет','опера','театр','кино',
+    'выставка','музей','концерт','соревнование','чемпионат','турнир','олимпиада',
+    'медаль','трофей','рюкзак','термометр','микроскоп','телескоп','бинокль',
+    'гантели','скакалка','теннисная ракетка','шашки','шахматы','карты','монополия',
+    'водопад','пещера','вулкан','остров','пустыня','джунгли','тундра','степь',
+    'тайга','ледник','трамплин','карусель','качели','батут','боулинг','бильярд',
+    'рыбалка','туризм','альпинизм','сёрфинг','дайвинг','парашют','рафтинг',
+    'акробат','жонглёр','клоун','фокусник','иллюзионист','танцор','курьер',
+    'перчатки','шарф','пальто','свитер','джинсы','носки','пижама','купальник',
+    'кольцо','серьги','браслет','ожерелье','галстук','ремень','отвёртка','молоток',
+    'пила','дрель','рубанок','гаечный ключ','паспорт','виза','билет','таможня'
+  ],
+  hard: [
+    'абстракция','амбиция','апатия','баланс','бюрократия','вакуум','гипотеза',
+    'диссонанс','эмпатия','феномен','иерархия','иллюзия','импульс','интуиция',
+    'ирония','катарсис','концепция','коррупция','легитимность','манипуляция',
+    'меланхолия','метафора','нарратив','нигилизм','парадокс','патетика',
+    'перспектива','пессимизм','плюрализм','постулат','прогресс','пропаганда',
+    'реализм','рефлексия','скептицизм','стагнация','субъективность','сюрреализм',
+    'тоталитаризм','утопия','философия','харизма','цинизм','эволюция',
+    'экзистенция','эклектика','элитаризм','энтропия','эрудиция','эстетика',
+    'эфемерность','авторитаризм','дискриминация','консенсус','конформизм',
+    'демагогия','дилемма','дипломатия','доминирование','дуализм','идеология',
+    'импровизация','инновация','инстинкт','интерпретация','коалиция','коммуникация',
+    'компромисс','конкуренция','конституция','координация','либерализм','лицемерие',
+    'медиация','менталитет','меритократия','мимикрия','модернизация','монополия',
+    'мотивация','нейтралитет','объективность','оппортунизм','оптимизм','патриотизм',
+    'перфекционизм','популизм','прагматизм','прецедент','прокрастинация','психоанализ',
+    'радикализм','рационализм','релятивизм','риторика','романтизм','сарказм',
+    'солидарность','социализация','стереотип','стоицизм','суверенитет','тактика',
+    'трансформация','универсализм','фанатизм','федерализм','формализм','хаос',
+    'цензура','централизация','эгоизм','экспансия','электорат','эмансипация',
+    'этика','эффективность'
+  ]
 };
+
+const MIN_WORDS_THRESHOLD = 20;
 
 function shuffle(arr) {
   const a = [...arr];
@@ -29,7 +89,8 @@ let lobby = {
   teams: {},
   settings: { roundDuration: 60, wordsToWin: 20, difficulty: 'normal' },
   gameState: 'lobby',
-  gameData: null
+  gameData: null,
+  usedWords: { normal: new Set(), hard: new Set() }
 };
 
 function getPlayerByNick(nick) {
@@ -46,11 +107,11 @@ function getObservers() {
   return Object.values(lobby.players).filter(p => !inTeam.has(p.id)).map(p => p.id);
 }
 function cleanupTeam(team) {
-  if (team && team.players.length === 0) { delete lobby.teams[team.id]; }
+  if (team && team.players.length === 0) delete lobby.teams[team.id];
 }
 function broadcastState() {
   const teamsArray = Object.values(lobby.teams).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const state = {
+  io.emit('state', {
     players: lobby.players,
     teams: lobby.teams,
     teamsOrder: teamsArray.map(t => t.id),
@@ -58,8 +119,7 @@ function broadcastState() {
     gameState: lobby.gameState,
     gameData: lobby.gameData ? sanitizeGameData() : null,
     observers: getObservers()
-  };
-  io.emit('state', state);
+  });
 }
 function sanitizeGameData() {
   const gd = lobby.gameData;
@@ -67,6 +127,7 @@ function sanitizeGameData() {
     currentTeamIndex: gd.currentTeamIndex,
     teamOrder: gd.teamOrder,
     scores: gd.scores,
+    roundsCompleted: gd.roundsCompleted,
     roundActive: gd.roundActive,
     roundEndTime: gd.roundEndTime,
     explainerSocketId: gd.explainerSocketId,
@@ -74,14 +135,17 @@ function sanitizeGameData() {
     phase: gd.phase,
     readyPlayers: gd.readyPlayers,
     reviewWords: gd.phase === 'reviewing' ? gd.roundWords : null,
-    winner: gd.winner || null
+    winner: gd.winner || null,
+    winTriggered: gd.winTriggered || false
   };
 }
 function pickWord() {
   const gd = lobby.gameData;
   if (!gd || gd.remainingWords.length === 0) return null;
   const idx = Math.floor(Math.random() * gd.remainingWords.length);
-  return gd.remainingWords.splice(idx, 1)[0];
+  const word = gd.remainingWords.splice(idx, 1)[0];
+  lobby.usedWords[gd.difficulty].add(word);
+  return word;
 }
 function sendWordToExplainer() {
   const gd = lobby.gameData;
@@ -129,7 +193,7 @@ function endRound() {
 io.on('connection', (socket) => {
 
   socket.on('register', ({ nick }) => {
-    if (lobby.players[socket.id]) return; // уже зарегистрирован
+    if (lobby.players[socket.id]) return;
     nick = (nick || '').trim();
     if (nick.length < 2 || nick.length > 20) { socket.emit('error_msg', 'Ник: от 2 до 20 символов'); return; }
     if (getPlayerByNick(nick)) { socket.emit('error_msg', 'Такой ник уже занят'); return; }
@@ -147,7 +211,7 @@ io.on('connection', (socket) => {
     const p = lobby.players[socket.id];
     if (!p) { socket.emit('error_msg', 'Вы не зарегистрированы'); return; }
     p.nick = nick;
-    socket.emit('nick_changed', { nick }); // клиент закроет модалку по этому событию
+    socket.emit('nick_changed', { nick });
     broadcastState();
   });
 
@@ -160,7 +224,7 @@ io.on('connection', (socket) => {
     if (getTeamByName(name)) { socket.emit('error_msg', 'Такое название уже занято'); return; }
     const teamId = uuidv4();
     lobby.teams[teamId] = { id: teamId, name, creatorId: socket.id, players: [socket.id], createdAt: Date.now() };
-    socket.emit('team_created'); // клиент закроет модалку по этому событию
+    socket.emit('team_created');
     broadcastState();
   });
 
@@ -173,7 +237,7 @@ io.on('connection', (socket) => {
     const ex = getTeamByName(name);
     if (ex && ex.id !== teamId) { socket.emit('error_msg', 'Такое название уже занято'); return; }
     team.name = name;
-    socket.emit('team_renamed'); // клиент закроет модалку по этому событию
+    socket.emit('team_renamed');
     broadcastState();
   });
 
@@ -204,7 +268,7 @@ io.on('connection', (socket) => {
     if (lobby.gameState !== 'lobby') { socket.emit('error_msg', 'Игра уже началась'); return; }
     if (roundDuration !== undefined) { const v = parseInt(roundDuration); if (v >= 10 && v <= 300) lobby.settings.roundDuration = v; }
     if (wordsToWin !== undefined) { const v = parseInt(wordsToWin); if (v >= 5 && v <= 100) lobby.settings.wordsToWin = v; }
-    if (difficulty !== undefined && ['easy','normal','hard'].includes(difficulty)) lobby.settings.difficulty = difficulty;
+    if (difficulty !== undefined && ['normal','hard'].includes(difficulty)) lobby.settings.difficulty = difficulty;
     broadcastState();
   });
 
@@ -214,13 +278,19 @@ io.on('connection', (socket) => {
     if (targetId === socket.id) return;
     const target = lobby.players[targetId];
     if (!target) return;
+
     const team = getPlayerTeam(targetId);
     if (team) {
+      // Игрок в команде — убираем в наблюдатели, из лобби не выгоняем
       team.players = team.players.filter(id => id !== targetId);
       if (team.creatorId === targetId && team.players.length > 0) team.creatorId = team.players[0];
       cleanupTeam(team);
+      io.to(targetId).emit('kick_from_team');
+    } else {
+      // Игрок уже наблюдатель — выгоняем из лобби полностью
+      delete lobby.players[targetId];
+      io.to(targetId).emit('kicked');
     }
-    io.to(targetId).emit('kick_from_team');
     broadcastState();
   });
 
@@ -241,13 +311,24 @@ io.on('connection', (socket) => {
     if (teams.length < 2) { socket.emit('error_msg', 'Нужно минимум 2 команды'); return; }
     const incomplete = teams.find(t => t.players.length !== 2);
     if (incomplete) { socket.emit('error_msg', `В команде "${incomplete.name}" не 2 игрока`); return; }
+
     lobby.gameState = 'playing';
     const teamOrder = teams.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).map(t => t.id);
-    const scores = {}, teamRounds = {};
-    teams.forEach(t => { scores[t.id] = 0; teamRounds[t.id] = 0; });
+    const scores = {}, teamRounds = {}, roundsCompleted = {};
+    teams.forEach(t => { scores[t.id] = 0; teamRounds[t.id] = 0; roundsCompleted[t.id] = 0; });
+
+    const difficulty = lobby.settings.difficulty;
+    let available = WORDS[difficulty].filter(w => !lobby.usedWords[difficulty].has(w));
+    if (available.length < MIN_WORDS_THRESHOLD) {
+      lobby.usedWords[difficulty] = new Set();
+      available = [...WORDS[difficulty]];
+    }
+
     lobby.gameData = {
-      teamOrder, currentTeamIndex: 0, scores, teamRounds,
-      remainingWords: shuffle([...WORDS[lobby.settings.difficulty]]),
+      teamOrder, currentTeamIndex: 0, scores, teamRounds, roundsCompleted,
+      remainingWords: shuffle(available),
+      difficulty,
+      winTriggered: false,
       phase: 'waiting_ready', readyPlayers: [],
       roundActive: false, roundEndTime: null,
       explainerSocketId: null, currentWord: null,
@@ -290,14 +371,28 @@ io.on('connection', (socket) => {
     if (!player || !player.isHost) return;
     const gd = lobby.gameData;
     if (!gd || gd.phase !== 'reviewing') return;
+
     const teamId = gd.teamOrder[gd.currentTeamIndex];
     let correct = 0;
     gd.roundWords.forEach(w => { if (results[w.word]) correct++; });
     gd.scores[teamId] += correct;
-    if (gd.scores[teamId] >= lobby.settings.wordsToWin) {
-      gd.winner = teamId; gd.phase = 'winner'; lobby.gameState = 'game_over';
-      broadcastState(); return;
+    gd.roundsCompleted[teamId] = (gd.roundsCompleted[teamId] || 0) + 1;
+
+    if (gd.scores[teamId] >= lobby.settings.wordsToWin) gd.winTriggered = true;
+
+    if (gd.winTriggered) {
+      const counts = gd.teamOrder.map(id => gd.roundsCompleted[id] || 0);
+      if (counts.every(c => c === counts[0])) {
+        let winnerId = gd.teamOrder[0];
+        gd.teamOrder.forEach(tid => { if (gd.scores[tid] > gd.scores[winnerId]) winnerId = tid; });
+        gd.winner = winnerId;
+        gd.phase = 'winner';
+        lobby.gameState = 'game_over';
+        broadcastState();
+        return;
+      }
     }
+
     gd.currentTeamIndex = (gd.currentTeamIndex + 1) % gd.teamOrder.length;
     setupNextRound();
   });
@@ -306,7 +401,9 @@ io.on('connection', (socket) => {
     const player = lobby.players[socket.id];
     if (!player || !player.isHost) return;
     if (lobby.gameData && lobby.gameData.timer) clearTimeout(lobby.gameData.timer);
-    lobby.gameState = 'lobby'; lobby.gameData = null; lobby.teams = {};
+    lobby.gameState = 'lobby';
+    lobby.gameData = null;
+    lobby.teams = {};
     broadcastState();
   });
 
